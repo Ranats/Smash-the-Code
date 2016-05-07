@@ -1,4 +1,4 @@
-STDOUT.sync = true # DO NOT REMOVE
+TDOUT.sync = true # DO NOT REMOVE
 # Auto-generated code below aims at helping you parse
 # the standard input according to the problem statement.
 
@@ -66,7 +66,7 @@ def put(board,x,y,color,rot,height)
                 y = 12 - height[x]
                 @board_c[y][x+1].color = color[:b]
             else
-                STDERR.puts "board[#{y},#{x+1}]:#{@board_c[y][x+1].color}"
+#                STDERR.puts "board[#{y},#{x+1}]:#{@board_c[y][x+1].color}"
                 return -1
             end
         when 1
@@ -74,7 +74,7 @@ def put(board,x,y,color,rot,height)
                 @board_c[y-1][x].color = color[:b]
                 @board_c[y][x].color = color[:a]
             else
-                STDERR.puts "board[#{y-1},#{x}]:#{@board_c[y-1][x].color}"
+#                STDERR.puts "board[#{y-1},#{x}]:#{@board_c[y-1][x].color}"
                 return -1
             end
         when 2  # =>2 1 .
@@ -83,7 +83,7 @@ def put(board,x,y,color,rot,height)
                 y = 12 - height[x-2]
                 @board_c[y][x-1].color = color[:b]
             else
-                STDERR.puts "board[#{y},#{x-1}]:#{@board_c[y][x-1].color}"
+#                STDERR.puts "board[#{y},#{x-1}]:#{@board_c[y][x-1].color}"
                 return -1
             end
         when 3
@@ -91,7 +91,7 @@ def put(board,x,y,color,rot,height)
                 @board_c[y-1][x].color = color[:a]
                 @board_c[y][x].color = color[:b]
             else
-                STDERR.puts "board[#{y-1},#{x}]:#{@board_c[y-1][x].color}"
+#                STDERR.puts "board[#{y-1},#{x}]:#{@board_c[y-1][x].color}"
                 return -1
             end
     end
@@ -146,17 +146,14 @@ class Simulator
 
         STDERR.puts "sav1#{sav[1]}"
 
+        # =>このループをメソッドとして外に出して呼び出す。スコアを返す
         6.times do |i|
             x = i+1
             y = 12-@height[i]
                 4.times do |rot|
-#                    STDERR.puts "rot:#{rot},x:#{x},y:#{y},grid[y][x+1]:#{@grid[y][x+1].color},grid[y][x-1]:#{@grid[y][x-1].color}"
-#                    if (rot == 0 && @grid[y][x+1].color != -1) || (rot == 2 && @grid[y][x-1].color != -1)
-#                        next
-#                    end
-
-                    board = put(@grid,x,y,nxt,rot,@height)
-                    if board == -1
+                    # =>ディープコピーしてるので置くたびに新しい盤面のオブジェクトを生成
+                    board_p = put(@grid,x,y,nxt,rot,@height)
+                    if board_p == -1
                         next
                     end
 
@@ -178,12 +175,16 @@ class Simulator
                     end
 
                     [:a,:b].each_with_index do |color,index|
+                        board = board_p
                         count = checkCount(board,tx[index],ty[index],nxt[color])
-                        STDERR.puts "rot:#{rot},count:#{count},x:#{tx},y:#{ty},color:#{color}"
+#                        STDERR.puts "rot:#{rot},count:#{count},x:#{tx},y:#{ty},color:#{color}"
                         
                         # =>del
                         if count >= 4
-                            checkDel(board,tx[index],ty[index],nxt[color])
+                            # =>消すのと同時に連鎖数の判定
+#                            STDERR.puts "rensa:#{checkDel(board,tx[index],ty[index],nxt[color])}"
+                            # =>連鎖数じゃなくて消した数
+                            count += checkDel(board,tx[index],ty[index],nxt[color],count)
                         end
                         
                     # =>次の盤面(Simulate)を回して7回(最大)まで回してコンボも計算して評価
@@ -195,6 +196,8 @@ class Simulator
                     end
                     
                     # =>next
+                    # =>1パターン置いた時の盤面　board_p
+                    # =>コレを次のシミュレータに渡して回す?
                     
                 end
 #            STDERR.puts "count:#{checkCount(put(@grid,x,y,nxt),x,y,nxt)}"
@@ -203,39 +206,118 @@ class Simulator
         return sav
     end
     
-    def checkDel(board,x,y,color)
+    def checkDel(board,x,y,color,rensa = 1,total)
+        STDERR.puts "del:rensa #{rensa}"
+        t = []
         # =>検査
-        
-        if checkCount(board,x,y,color) >= 4
-            checkDel(board,x,y,color)
+        board.map do |line|
+            line.map do |cell|
+                if cell.chkFlg
+                    cell.color = -1
+                    t << [cell.x,cell.y]
+                    
+#                    STDERR.puts "cell.x/y #{cell.x},#{cell.y}"
+#                    STDERR.puts board[cell.y][cell.x+1]
+#                    STDERR.puts board[cell.y][cell.x-1]
+                    
+                    
+                    # =>ゼロも一緒に消す
+                    [-1,1].each do |i|
+                        if (cell.x+i).between?(1,6)
+                            if board[cell.y][(cell.x+i)].color == 0
+                                board[cell.y][(cell.x+i)].color = -1
+                                t << [cell.x+i,cell.y]
+                            end
+                        end
+                        if (cell.y+i).between?(1,12)
+                            if board[(cell.y+i)][cell.x].color == 0
+                                board[(cell.y+i)][cell.x].color = -1
+                                t << [cell.x,(cell.y+i)]
+                            end
+                        end
+                    end
+                end
+                cell.chkFlg  = false
+            end
         end
         
-        return board
+        STDERR.puts "t:#{t}"
+        
+        # 落とす
+        board_rotate = board.transpose
+        board_rotate.each_with_index do |line,x|
+            field = line[1,12]
+            field.delete_if{|x| x.color == -1 }
+            remain_size = field.size
+            y = 1
+            while field.size < 12
+                field.unshift(Cell.new(x+1,12-field.size,-1))
+                y+=1
+            end
+            line[1,12] = field
+            line.each_with_index do |cell,i|
+                cell.x = x
+                cell.y = i
+#                STDERR.puts "#{x}:#{cell.x},#{cell.y}"
+            end
+        end
+        
+        board = board_rotate.transpose
+        
+#        show board
+#        STDERR.puts "t:#{t}"
+        
+        # => ここまではOK
+        t.each do |cell|
+#            STDERR.puts "cell:#{cell}"
+#            STDERR.puts "color:#{board[cell[1]][cell[0]].color}"
+#            STDERR.puts "checkFlg:#{board[cell[1]][cell[0]].chkFlg}"
+            # =>消したセルの座標(高さ)を記録しておいてループで回してその座標でカウントチェック?
+            if board[cell[1]][cell[0]].color > 0 && board[cell[1]][cell[0]].chkFlg == false 
+                count = checkCount(board,cell[0],cell[1],board[cell[1]][cell[0]].color)
+                STDERR.puts "count:#{count}"
+                if count >= 4
+                    # =>連鎖数
+#                    rensa += checkDel(board,cell[0],cell[1],board[cell[1]][cell[0]].color)
+                    # =>消えたトータルの数
+                    total += checkDel(board,cell[0],cell[1],board[cell[1]][cell[0]].color,1,total+count)
+                end
+            end
+        end
+        
+        return total
     end
     
     def checkCount(board,x,y,color,count=1)
         if board == -1
             return 0
         end
+
+#        STDERR.puts "x,y:#{x},#{y}"
+
         board[y][x].chkFlg = true
     
         neighbor = []
-        [-1,1].each do |i|
-            if (x+i).between?(1,6)
-                neighbor << board[y][(x+i)]
+        [-1,1].each do |pm|
+            if (x+pm).between?(1,6)
+                neighbor << board[y][(x+pm)]
             end
-            if (y+i).between?(1,12)
-                neighbor << board[(y+i)][x]
+            if (y+pm).between?(1,12)
+                neighbor << board[(y+pm)][x]
             end
         end
-    
+        
+#        neighbor.each do |cell|
+#            STDERR.puts "cell:#{cell.x},#{cell.y}"
+#        end
+        
         neighbor.each do |cell|
 #        STDERR.puts "cell:#{cell.x},#{cell.y},#{cell.color},own:#{color}"
             if cell.color == color && cell.chkFlg == false
                 count += checkCount(board,cell.x,cell.y,color)
             end
         end
-    
+        
         return count    # => 4以上なら消える
     end
 end
