@@ -1,4 +1,4 @@
-TDOUT.sync = true # DO NOT REMOVE
+STDOUT.sync = true # DO NOT REMOVE
 # Auto-generated code below aims at helping you parse
 # the standard input according to the problem statement.
 
@@ -108,13 +108,6 @@ class Simulator
         @grid = grid
         
         @blocks = blocks
-        @height = []
-        @grid.transpose.each do |line|
-            @height << line.count{|item| item.color >= 0}
-        end
-        @height.shift
-        @height.pop
-        
     end
     
     # =>6箇所置く
@@ -122,37 +115,14 @@ class Simulator
     
     # =>タイムアウトしたら　...　各色の盤上の色との距離がそれぞれ最小になる位置に置くとか
     
-    def simulate
-        show @grid
-        STDERR.puts @height
-#        STDERR.puts @grid[1][1].chkFlg
-#        STDERR.puts @grid,put(@grid,1,12,@blocks[0][:no])
-
-        if @blocks.empty?
-            return 0
-        end
-        
-        maxc = 0
-        nxt = @blocks.shift
-        rnd = [[0,0],[0,1],[0,3]]
-        4.times do |i|
-            4.times do |j|
-                rnd << [i+1,j]
-            end
-        end
-        rnd += [[5,1],[5,2],[5,3]]
-        
-        sav = rnd.sample
-
-        STDERR.puts "sav1#{sav[1]}"
-
+    def search(grid,height,nxt,maxc,sav)
         # =>このループをメソッドとして外に出して呼び出す。スコアを返す
         6.times do |i|
             x = i+1
-            y = 12-@height[i]
+            y = 12-height[i]
                 4.times do |rot|
                     # =>ディープコピーしてるので置くたびに新しい盤面のオブジェクトを生成
-                    board_p = put(@grid,x,y,nxt,rot,@height)
+                    board_p = put(grid,x,y,nxt,rot,height)
                     if board_p == -1
                         next
                     end
@@ -164,12 +134,12 @@ class Simulator
                     case rot
                         when 0
                             tx[1] += 1
-                            ty[1] = 12 - @height[x]
+                            ty[1] = 12 - height[x]
                         when 1
                             ty[1] -= 1
                         when 2
                             tx[1] -= 1
-                            ty[1] = 12 - @height[x-1]
+                            ty[1] = 12 - height[x-1]
                         when 3
                             ty[0] -= 1
                     end
@@ -204,9 +174,130 @@ class Simulator
         end
         
         return sav
+        
     end
     
-    def checkDel(board,x,y,color,rensa = 1,total)
+    def height_map(grid)
+        height = []
+        grid.transpose.each do |line|
+            height << line.count{|item| item.color >= 0}
+        end
+        height.shift
+        height.pop
+        return height
+    end
+    
+    def start
+        @height = []
+        @grid.transpose.each do |line|
+            @height << line.count{|item| item.color >= 0}
+        end
+        @height.shift
+        @height.pop
+        retarr = simulate(@grid,@blocks,@height)
+        STDERR.puts retarr.inspect
+        return retarr[1]
+    end
+    
+    $count = 0
+    def simulate(grid,blocks,height,maxc = [0,[0,0]],maxo=0)
+#        show grid
+        STDERR.puts blocks.size
+#        STDERR.puts @grid[1][1].chkFlg
+#        STDERR.puts @grid,put(@grid,1,12,@blocks[0][:no])
+
+        if blocks.size < 8
+            return maxc
+        end
+        
+        maxco = 0
+        nxt = blocks.shift
+#        rnd = [[0,0],[0,1],[0,3]]
+#        4.times do |i|
+#            4.times do |j|
+#                rnd << [i+1,j]
+#            end
+#        end
+#        rnd += [[5,1],[5,2],[5,3]]
+        
+        sav = []
+        
+#        sav = search(@grid,@height,nxt,maxc,sav)
+
+        # =>このループをメソッドとして外に出して呼び出す。スコアを返す
+        6.times do |i|
+            x = i+1
+            y = 12-height[i]
+            max4 = Array.new(4,0)
+                4.times do |rot|
+                    # =>ディープコピーしてるので置くたびに新しい盤面のオブジェクトを生成
+                    board_p = put(grid,x,y,nxt,rot,height)
+                    if board_p == -1
+                        next
+                    end
+
+                    # =>探索基準位置tx,ty
+                    tx = [x,x]
+                    ty = [y,y]
+                    # 回転
+                    case rot
+                        when 0
+                            tx[1] += 1
+                            ty[1] = 12 - height[x]
+                        when 1
+                            ty[1] -= 1
+                        when 2
+                            tx[1] -= 1
+                            ty[1] = 12 - height[x-1]
+                        when 3
+                            ty[0] -= 1
+                    end
+
+                    count = [0,0]
+                    
+                    board = board_p
+                    count = [checkCount(board,tx[0],ty[0],nxt[:a]),
+                            checkCount(board,tx[1],ty[1],nxt[:b])]
+                    if count.sort!.reverse![0] >= 4
+                        [:a,:b].each_with_index do |color,index|
+#                        STDERR.puts "rot:#{rot},count:#{count},x:#{tx},y:#{ty},color:#{color}"
+                        
+                        # =>del
+                            # =>消すのと同時に連鎖数の判定
+#                            STDERR.puts "rensa:#{checkDel(board,tx[index],ty[index],nxt[color])}"
+                            # =>連鎖数じゃなくて消した数
+                            count[0] += checkDel(board,tx[index],ty[index],count[0])
+                        end
+                        
+                    # =>次の盤面(Simulate)を回して7回(最大)まで回してコンボも計算して評価
+                    # =>4つ以上つながる所があればそこに置いちゃう
+#                        if count[0] > maxc[0]
+#                            maxc = count[0]
+#                            sav = [i,rot]
+#                        end
+                    end
+                        max4[rot] = [count[0],[i,rot]]
+                    
+                    # =>next
+                    # =>1パターン置いた時の盤面　board_p
+                    # =>コレを次のシミュレータに渡して回す?
+                    
+                    retarr = simulate(board_p,blocks,height_map(board_p),max4.max_by{|m| m[0]},maxo)
+                    maxo = retarr[0]
+                    
+                    if retarr[0] > maxco
+                        maxco = retarr[0]
+                        sav << retarr[1]
+                    end
+                    STDERR.puts "sav:#{sav}"
+                end
+#            STDERR.puts "count:#{checkCount(put(@grid,x,y,nxt),x,y,nxt)}"
+        end
+#        return 
+        return [maxco,sav]
+    end
+    
+    def checkDel(board,x,y,rensa = 1,total)
         STDERR.puts "del:rensa #{rensa}"
         t = []
         # =>検査
@@ -280,7 +371,7 @@ class Simulator
                     # =>連鎖数
 #                    rensa += checkDel(board,cell[0],cell[1],board[cell[1]][cell[0]].color)
                     # =>消えたトータルの数
-                    total += checkDel(board,cell[0],cell[1],board[cell[1]][cell[0]].color,1,total+count)
+                    total += checkDel(board,cell[0],cell[1],1,total+count)
                 end
             end
         end
@@ -321,6 +412,9 @@ class Simulator
         return count    # => 4以上なら消える
     end
 end
+
+
+    $simulated = []
 
 # game loop
 loop do
@@ -368,22 +462,29 @@ loop do
         end
     end
     
-        
-    simulated = [nxt[:a],[*0,2].sample]
-    sim = Simulator.new(grid,blocks)
-    simulated = sim.simulate
+            STDERR.puts "go"
+
+    STDERR.puts $simulated
     
-    while height[simulated[0]] > 11
-        simulated = [[*0..5].sample,[*0..4].sample]
-    end        
+    if $simulated.empty?
+        sim = Simulator.new(grid,blocks)
+        $simulated = sim.start
+    end
+    
+        STDERR.puts "go2"
+
+#    while height[simulated[0][0]] > 11
+#        simulated = [[*0..5].sample,[*0..4].sample]
+#    end        
     
 
-    
-    if simulated[0] >= 0
-        output = "#{simulated[0]} #{simulated[1]}\n"
-    else
-        output = "#{((nxt[:a])%6)} 1\n"
-    end
+    sft = $simulated.shift.flatten
+    output = "#{sft[0]} #{sft[1]}"
+#    if simulated[0] >= 0
+#        output = "#{simulated[0]} #{simulated[1]}\n"
+#    else
+#        output = "#{((nxt[:a])%6)} 1\n"
+#    end
 
 #    show grid
 #    STDERR.puts "1,1:#{grid[2][2].inspect}"
@@ -465,8 +566,9 @@ loop do
 
  
  printf(output)   
+     STDERR.puts "end"
+
 #   printf("#{((nxt[:a])%6)} 1\n") # "x": the column in which to drop your blocks 
 #   printf("#{nxt}\n") # "x": the column in which to drop your blocks 
 
 end
-
