@@ -2,10 +2,6 @@ STDOUT.sync = true # DO NOT REMOVE
 # Auto-generated code below aims at helping you parse
 # the standard input according to the problem statement.
 
-
-blocks = []
-
-
 class Cell
   attr_accessor :color, :chkFlg, :x, :y, :delFlg
 
@@ -18,6 +14,8 @@ class Cell
   end
 end
 
+$BEAM_WIDTH = 3
+
 grid = Array.new(14) { Array.new(8, Cell.new(-1, -1, -2)) }
 
 def show(board)
@@ -29,34 +27,6 @@ def show(board)
   end
 end
 
-def check(board, x, y, own_color, count = 1)
-  STDERR.puts "#{count}"
-  board[y][x].chkFlg = true
-
-  neighbor = []
-  [-1, 1].each do |i|
-    if (x+i).between?(1, 6)
-#            STDERR.puts "x:#{x+i}"
-      neighbor << board[y][(x+i)]
-    end
-    if (y+i).between?(1, 12)
-      neighbor << board[(y+i)][x]
-    end
-  end
-
-#    STDERR.puts neighbor.inspect
-
-  neighbor.each do |cell|
-#        STDERR.puts "cell:#{cell.x},#{cell.y},#{cell.color},own:#{own_color}"
-    if cell.color == own_color && cell.chkFlg == false
-      return check(board, cell.x, cell.y, cell.color, count+1)
-    else
-      return count
-    end
-  end
-
-  return count # => 4以上なら消える
-end
 
 def put(board, x, y, color, rot, height)
   @board_c = Marshal.load(Marshal.dump(board))
@@ -116,68 +86,6 @@ class Simulator
 
   # =>タイムアウトしたら　...　各色の盤上の色との距離がそれぞれ最小になる位置に置くとか
 
-  def search(grid, height, nxt, maxc, sav)
-    # =>このループをメソッドとして外に出して呼び出す。スコアを返す
-    6.times do |i|
-      x = i+1
-      y = 12-height[i]
-      4.times do |rot|
-        # =>ディープコピーしてるので置くたびに新しい盤面のオブジェクトを生成
-        board_p = put(grid, x, y, nxt, rot, height)
-        if board_p == -1
-          next
-        end
-
-        # =>探索基準位置tx,ty
-        tx = [x, x]
-        ty = [y, y]
-        # 回転
-        case rot
-          when 0
-            tx[1] += 1
-            ty[1] = 12 - height[x]
-          when 1
-            ty[1] -= 1
-          when 2
-            tx[1] -= 1
-            ty[1] = 12 - height[x-1]
-          when 3
-            ty[0] -= 1
-        end
-
-        [:a, :b].each_with_index do |color, index|
-          board = board_p
-          count = checkCount(board, tx[index], ty[index], nxt[color])
-#                        STDERR.puts "rot:#{rot},count:#{count},x:#{tx},y:#{ty},color:#{color}"
-
-# =>del
-          if count >= 4
-            # =>消すのと同時に連鎖数の判定
-            #                            STDERR.puts "rensa:#{checkDel(board,tx[index],ty[index],nxt[color])}"
-            # =>連鎖数じゃなくて消した数
-            count += checkDel(board, tx[index], ty[index], nxt[color], count)
-          end
-
-# =>次の盤面(Simulate)を回して7回(最大)まで回してコンボも計算して評価
-# =>4つ以上つながる所があればそこに置いちゃう
-          if count > maxc
-            maxc = count
-            sav = [i, rot]
-          end
-        end
-
-        # =>next
-        # =>1パターン置いた時の盤面　board_p
-        # =>コレを次のシミュレータに渡して回す?
-
-      end
-#            STDERR.puts "count:#{checkCount(put(@grid,x,y,nxt),x,y,nxt)}"
-    end
-
-    return sav
-
-  end
-
   def height_map(grid)
     height = []
     grid.transpose.each do |line|
@@ -196,20 +104,21 @@ class Simulator
     @height.shift
     @height.pop
     retarr = simulate(@grid, @blocks, @height)
-    STDERR.puts retarr.inspect
+    STDERR.puts retarr[3].inspect
     
-    return retarr[1]
+    return retarr[3]
   end
 
   $count = 0
 
-  def simulate(grid, blocks, height, maxc = [0, [0, 0]], maxren=0)
+  def simulate(grid, blocks_p, height, maxc = [0, [0, 0]], maxren=0)
 #        show grid
-    STDERR.puts blocks.size
+    blocks = Marshal.load(Marshal.dump(blocks_p))
+#    STDERR.puts blocks.size
 #        STDERR.puts @grid[1][1].chkFlg
 #        STDERR.puts @grid,put(@grid,1,12,@blocks[0][:no])
 
-    if blocks.size < 5
+    if blocks.size < 6
       return maxc
     end
 
@@ -228,10 +137,13 @@ class Simulator
 #        sav = search(@grid,@height,nxt,maxc,sav)
 
 # =>このループをメソッドとして外に出して呼び出す。スコアを返す
+#    max24 = Array.new(24)#{Array.new(3){0,[],0)}
+    max24 = []
+    
     6.times do |i|
       x = i+1
       y = 12-height[i]
-      max4 = Array.new(4, 0)
+
       4.times do |rot|
         # =>ディープコピーしてるので置くたびに新しい盤面のオブジェクトを生成
         board_p = put(grid, x, y, nxt, rot, height)
@@ -281,40 +193,61 @@ class Simulator
         end
         
         maxren = [maxren,count[0]/4].max
-        max4[rot] = [count[0], [i, rot]]
+#        max24[(i*4)+rot] = [count[0], [i, rot], board,[]]
+        max24 << [count[0], [i, rot], board,[[i,rot]]]
         
-        if max4.max_by { |m| m[0] }[0] > maxc[0]
-            sav = [[i,rot]]
-            maxc = max4.max_by{|m|m[0]}
-        end
+#        if max4.max_by { |m| m[0] }[0] > maxc[0]
+#            sav = [[i,rot]]
+#            maxc = max4.max_by{|m|m[0]}
+#        end
         
-        if count[0] == 1 && maxren < 1
-            sav = [[i,rot]]
+#        if count[0] == 1 && maxren < 1
+#            sav = [[i,rot]]
             #next
-        else
+#        else
 
         # =>next
         # =>1パターン置いた時の盤面　board_p
         # =>コレを次のシミュレータに渡して回す?
 
-            retarr = simulate(board_p, blocks, height_map(board_p), max4.max_by { |m| m[0] }, maxren)
+#            retarr = simulate(board_p, blocks, height_map(board_p), max4.max_by { |m| m[0] }, maxren)
             #maxo = retarr[0]
 
-            if retarr[0] > maxco
-              maxco = retarr[0]
-              sav.unshift retarr[1]
-            end
-        end
-        STDERR.puts "sav:#{sav}"
+#            if retarr[0] > maxco
+#              maxco = retarr[0]
+#              sav.unshift retarr[1]
+#            end
+#        end
+#        STDERR.puts "sav:#{sav}"
       end
+      
 #            STDERR.puts "count:#{checkCount(put(@grid,x,y,nxt),x,y,nxt)}"
     end
+    
+#    STDERR.puts max24.size
+    # =>枝刈り
+    max24.sort_by!{|item| item[0]}.reverse!.slice!(([$BEAM_WIDTH,max24.size].min),max24.size+1)
+
+    max24.each_with_index do |item,index|
+#        STDERR.puts "index:#{index}, blocks:#{blocks.size}"
+
+#        STDERR.puts "item:#{item}"
+        retarr = simulate(item[2], blocks, height_map(item[2]), item)
+#        STDERR.puts retarr[1].inspect
+#        STDERR.puts "item3:#{item[3].inspect}"
+        
+        item[0] += retarr[0]
+        item[3] << retarr[1]
+#        STDERR.puts "item3:#{item[3].inspect}"
+    end
+    
+#    STDERR.puts "max24[0][3]:#{max24[0][3]}"
 #        return 
-    return [maxco, sav]
+    return max24.sort_by{|item| item[0]}[0]
   end
 
   def checkDel(board, x, y, rensa = 1, total)
-    STDERR.puts "del:rensa #{rensa}"
+#    STDERR.puts "del:rensa #{rensa}"
     t = []
     # =>検査
     board.map do |line|
@@ -348,7 +281,7 @@ class Simulator
       end
     end
 
-    STDERR.puts "t:#{t}"
+#    STDERR.puts "t:#{t}"
 
     # 落とす
     board_rotate = board.transpose
@@ -382,7 +315,7 @@ class Simulator
 # =>消したセルの座標(高さ)を記録しておいてループで回してその座標でカウントチェック?
       if board[cell[1]][cell[0]].color > 0 && board[cell[1]][cell[0]].chkFlg == false
         count = checkCount(board, cell[0], cell[1], board[cell[1]][cell[0]].color)
-        STDERR.puts "count:#{count}"
+#        STDERR.puts "count:#{count}"
         if count >= 4
           # =>連鎖数
           #                    rensa += checkDel(board,cell[0],cell[1],board[cell[1]][cell[0]].color)
@@ -497,6 +430,7 @@ loop do
   STDERR.puts $simulated.inspect
   sft = $simulated.shift
   output = "#{sft[0]} #{sft[1]}\n"
+#    output = "0 0\n"
 #    if simulated[0] >= 0
 #        output = "#{simulated[0]} #{simulated[1]}\n"
 #    else
