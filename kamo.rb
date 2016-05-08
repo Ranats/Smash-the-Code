@@ -149,6 +149,21 @@ class Simulator2
             
             fp << sc
             
+            # =>隣接行の下方に存在する同色個数
+            step = 0
+            [[x,y,:a],[x2,y2,:b]].each do |z|
+                # =>右下
+                if z[0] < 5
+                    step += board_r[z[0]+1].slice(z[1],11).count{|cell| cell.color == nxt[z[2]]} / 2.0 * z[1]
+                end
+                # =>左下
+                if z[0] > 0
+                    step += board_r[z[0]-1].slice(z[1],11).count{|cell| cell.color == nxt[z[2]]} / 2.0 * z[1]
+                end
+            end
+            
+            fp << step
+            
             STDERR.puts fp.inspect
             
             pattern[:v] = cc
