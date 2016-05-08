@@ -98,10 +98,10 @@ class Simulator2
     def simulate
         nxt = @blocks.shift
         
-        # =>評価値のまとめ
-        fp = []
-        
         $patternList.each do |pattern|
+             # =>評価値のまとめ
+            fp = []
+            
             # =>置く
             x,y = pattern[:p][0],11-@height[pattern[:p][0]]
             board_after = put(@grid, x, y, nxt, pattern[:p][1], @height)
@@ -138,6 +138,19 @@ class Simulator2
             
             fp << cc
             
+            # =>同じ列に存在する同色個数
+            sc1 = countSameCol(board_after, x, y, nxt[:a])
+            sc2 = countSameCol(board_after, x2, y2, nxt[:b])
+            
+            sc = sc1 + sc2
+            if sc1 > 0 && sc2 > 0
+                sc += 24
+            end
+            
+            fp << sc
+            
+            STDERR.puts fp.inspect
+            
             pattern[:v] = cc
         end
         
@@ -172,6 +185,11 @@ class Simulator2
         
 #        STDERR.puts "count:#{count}"
         return count
+    end
+    
+        def countSameCol(board,x,y,color,count = 0)
+        board_r = board.transpose
+        return board_r[x].count{|cells| cells.color == color} -1
     end
 end
 
